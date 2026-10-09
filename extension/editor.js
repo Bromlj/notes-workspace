@@ -16,12 +16,54 @@
   let applyingAI = false;
   let aiCommit = null;
   const aiUndo = new Map();
+  const fileBindings = new Map();
+  let fileState = null;
+  let fileWarning = '';
+  let fileLoading = null;
+  const desktop = !!globalThis.NoteDesktop;
   try { tabs = JSON.parse(sessionStorage.getItem('open-notes') || '[]').filter(t=>typeof t.id==='string' && typeof t.name==='string'); } catch { tabs = []; }
   async function request(type, data = {}) {
     return NoteConnection.request(type,data);
   }
   function error(message) { $('error').textContent = message; $('error').hidden = !message; }
   function status(message) { $('save-status').textContent = message === 'Saved locally' ? '' : message; $('save-status').title = message; }
+  function ordinaryFileMessage(message){return /\b(?:codex|AI|task|turn)\b/i.test(String(message))?'File updates are in progress. Your recovery draft is kept. Wait for them to finish, then reload the file or use Save as.':String(message||'');}
+  function renderFileState(){
+    const state=fileState?.state||'',warning=ordinaryFileMessage(fileWarning||({missing:'The file is missing or was moved. Your recovery draft is kept. Relink it or use Save as.',changed:'The file changed on disk. Your recovery draft is kept. Reload it or use Save as.',conflict:'The file changed on disk. Your recovery draft is kept. Reload it or use Save as.'}[state]||''));
+    $('file-statebar').hidden=!desktop||!warning;$('file-status').textContent=warning;
+    $('file-reload').hidden=!fileState?.bindingId||state==='missing';$('file-relink').hidden=!desktop||!note;
+    for(const action of ['reload-file','relink-file']){const button=document.querySelector(`[data-action="${action}"]`);if(button)button.disabled=action==='reload-file'?!fileState?.bindingId:!note;}
+    $('document-name').title=fileState?.name||note?.name||'';
+    window.dispatchEvent(new Event('notepad-file-state-changed'));
+  }
+  function acceptFile(value,warning=''){
+    if(!desktop||!value||value.noteId!==note?.id)return;
+    fileState={...value};fileBindings.set(note.id,fileState);fileWarning=warning;renderFileState();
+  }
+  async function ensureFile(){
+    if(!desktop||!note)return null;if(fileState?.bindingId)return fileState;
+    const id=note.id,presentedText=editor.value;if(fileLoading?.noteId===id)return fileLoading.promise;
+    const promise=request('NOTE_FILE_STATUS',{noteId:id}).then(r=>{if(note?.id===id){if(r.file){
+        const different=typeof r.file.text!=='string'||r.file.text.replace(/\r\n?/g,'\n')!==presentedText.replace(/\r\n?/g,'\n');
+        if(different)acceptFile({...r.file,hash:fileState?.bindingId===r.file.bindingId?fileState.hash:null,state:'changed'},'The file has a newer revision than this recovery draft. Reload it or review the pending revision before saving.');
+        else acceptFile(r.file,r.fileError||'');
+      }else if(r.fileError){fileWarning=r.fileError;renderFileState();}}return note?.id===id?fileState:null;}).finally(()=>{if(fileLoading?.noteId===id)fileLoading=null;});
+    fileLoading={noteId:id,promise};return promise;
+  }
+  function fileGuard(){return fileState?.bindingId?{bindingId:fileState.bindingId,expectedHash:fileState.hash}:{};}
+  async function fileAction(type){
+    if(!desktop||!note)return;
+    if(['NOTE_FILE_OPEN','NOTE_FILE_RELINK','NOTE_FILE_SAVE_AS'].includes(type))await ensureFile().catch(()=>null);else await ensureFile();
+    await flush();
+    const id=note.id,guard=fileGuard(),changesNote=['NOTE_FILE_OPEN','NOTE_FILE_RELOAD','NOTE_FILE_RELINK'].includes(type);
+    if(changesNote)await globalThis.NotepadAssistant?.beforeNoteSwitch();
+    try{
+      const r=await request(type,type==='NOTE_FILE_OPEN'?{}:{noteId:id,...guard,name:note.name});
+      if(r.cancelled||r.canceled){if(changesNote)await globalThis.NotepadAssistant?.cancelNoteSwitch();return;}
+      if(r.note){if(['NOTE_FILE_RELOAD','NOTE_FILE_RELINK'].includes(type))aiUndo.delete(r.note.id);applyContext(r);undoChanged();editor.focus();}
+      else if(note?.id===id){if(r.file)acceptFile(r.file,r.fileError||'');else if(r.fileError){fileWarning=r.fileError;renderFileState();}if(r.file?.name&&note.name!==r.file.name){note.name=r.file.name;renderTabs();$('document-name').textContent=note.name;}status(r.fileError?'Recovery draft saved; file needs attention':r.file?'Saved':'Saved locally');}
+    }catch(e){if(changesNote)await globalThis.NotepadAssistant?.cancelNoteSwitch();if(note?.id===id){fileWarning=e.message;renderFileState();}throw Error(ordinaryFileMessage(e.message));}
+  }
   function updatePosition() {
     const {line, column} = C.lineCol(editor.value, editor.selectionStart);
     $('position').textContent = `Ln ${line}, Col ${column}`;
@@ -63,6 +105,7 @@
   }
   function applyNote(n) {
     note = C.note(n, n.id); RichEditor.load(note.html,note.text); dirty = false; revisionClock++;
+    fileState=fileBindings.get(note.id)||null;fileWarning='';renderFileState();
     editor.wrap = note.wrap ? 'soft' : 'off';
     editor.style.fontSize = `${note.fontSize}px`;
     $('zoom').textContent = `${Math.round(note.fontSize / 15 * 100)}%`;
@@ -71,13 +114,19 @@
     renderTabs();
     editor.disabled = false; status('Saved locally'); error(''); updatePosition();
   }
-  function applyContext(result){applyNote(result.note);if(result.assistant)globalThis.NotepadAssistant?.noteContext(result.assistant);}
-  globalThis.NotepadEditor=Object.freeze({applyContext,flush,canUndoAI,undoAI});
+  function applyContext(result){applyNote(result.note);if(result.file)acceptFile(result.file,result.fileError||'');else if(desktop)void ensureFile().catch(e=>{fileWarning=e.message;renderFileState();});if(result.assistant)globalThis.NotepadAssistant?.noteContext(result.assistant);}
+  globalThis.NotepadEditor=Object.freeze({applyContext,flush,canUndoAI,undoAI,ensureFile,file:()=>fileState?{...fileState}:null,fileGuard,openFile:()=>fileAction('NOTE_FILE_OPEN'),saveFile:()=>fileAction('NOTE_FILE_SAVE'),saveFileAs:()=>fileAction('NOTE_FILE_SAVE_AS')});
   function undoChanged(){window.dispatchEvent(new Event('notepad-ai-undo-changed'));}
-  function canUndoAI(){const s=note&&aiUndo.get(note.id);return !!s&&!aiCommit&&editor.value===s.after.text&&RichEditor.html()===s.after.html;}
+  function canUndoAI(){const s=note&&aiUndo.get(note.id);return !!s&&!aiCommit&&(!desktop||!s.bindingId||(s.bindingId===fileState?.bindingId&&(!s.afterHash||s.afterHash===fileState?.hash)))&&editor.value===s.after.text&&RichEditor.html()===s.after.html;}
   async function undoAI(){
+    if(globalThis.NotepadAssistant?.working?.())throw Error('Wait for this task to finish before undoing its file changes.');
     await flush();if(!canUndoAI())throw Error('The note changed after the AI revision. Use normal Undo to preserve your later edits.');
     const snapshot=aiUndo.get(note.id);
+    if(desktop&&snapshot.afterHash){
+      try{const result=await request('NOTE_FILE_UNDO',{noteId:note.id,bindingId:snapshot.bindingId,expectedHash:snapshot.afterHash,text:snapshot.before.text});
+        if(result.fileError)throw Error(result.fileError);if(result.file)acceptFile(result.file);
+      }catch(e){fileWarning=e.message;renderFileState();throw e;}
+    }
     editor.focus();applyingAI=true;
     try{
       // Rewind the accepted browser edits instead of reinserting HTML into
@@ -128,11 +177,11 @@
     }
     const after={text:editor.value,html:RichEditor.html()};
     const grouped=old?.requestId===m.editRequestId&&old.afterRevision===m.expectedRevision&&old.after.text===before.text&&old.after.html===before.html;
-    aiUndo.set(note.id,{requestId:m.editRequestId,before:grouped?old.before:before,after,afterRevision:m.expectedRevision+1,edits:(grouped?(old.edits||1):0)+Math.max(1,editSteps)});
+    aiUndo.set(note.id,{requestId:m.editRequestId,before:grouped?old.before:before,after,afterRevision:m.expectedRevision+1,edits:(grouped?(old.edits||1):0)+Math.max(1,editSteps),bindingId:fileState?.bindingId,beforeHash:grouped?old.beforeHash:fileState?.hash,afterHash:m.file?.hash});
     revisionClock++;dirty=false;status('Saving…');updatePosition();
     let release;const promise=new Promise(resolve=>{release=resolve;});
     aiCommit={noteId:note.id,requestId:m.editRequestId,clock:revisionClock,promise,release};undoChanged();
-    return {ok:true,accepted:true,note:{id:note.id,...after}};
+    return {ok:true,accepted:true,note:{id:note.id,...after},...fileState?{file:{...fileState}}:{}};
   }
   function queueSave() {
     clearTimeout(saveTimer);
@@ -149,13 +198,15 @@
     const next = saveQueue.catch(() => undefined).then(async () => {
       while(aiCommit)await aiCommit.promise;
       if (!note || !dirty) return;
+      if(desktop)try{await ensureFile();}catch(e){fileWarning=e.message;renderFileState();}
       const clock = revisionClock;
       const snapshot = {...note, text: editor.value, html:RichEditor.html()};
-      const result = await request('SAVE_NOTE', {note: snapshot});
+      const result = await request('SAVE_NOTE', {note: snapshot,...fileGuard()});
       if (note?.id !== snapshot.id) return;
       note.revision = result.note.revision; note.updatedAt = result.note.updatedAt;
+      if(result.file&&!result.fileError)acceptFile(result.file);if(result.fileError){fileWarning=result.fileError;renderFileState();}
       if (clock === revisionClock) {
-        dirty = false; note.text = snapshot.text;note.html=snapshot.html; status('Saved locally'); error('');
+        dirty = false; note.text = snapshot.text;note.html=snapshot.html; status(result.fileError?'Recovery draft saved; file needs attention':desktop&&fileState?'Saved':'Saved locally'); error('');
       } else { queueSave(); }
     });
     saveQueue = next;
@@ -284,8 +335,11 @@
     try {
       switch (name) {
         case 'new': await newNote(); break;
-        case 'open': $('open-file').click(); break;
-        case 'save': openSaveDialog(); break;
+        case 'open': if(desktop)await fileAction('NOTE_FILE_OPEN');else $('open-file').click(); break;
+        case 'save': if(desktop)await fileAction('NOTE_FILE_SAVE');else openSaveDialog(); break;
+        case 'save-as': if(desktop)await fileAction('NOTE_FILE_SAVE_AS');else openSaveDialog();break;
+        case 'reload-file': if(desktop)await fileAction('NOTE_FILE_RELOAD');break;
+        case 'relink-file': if(desktop)await fileAction('NOTE_FILE_RELINK');break;
         case 'save-html': {
           const html='<!doctype html><meta charset="utf-8"><title>Note</title><style>body{max-width:900px;margin:40px auto;font:16px/1.6 system-ui;white-space:pre-wrap}table{border-collapse:collapse}td,th{border:1px solid;padding:8px}</style>'+RichEditor.html();
           const url=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));await request('DOWNLOAD_NOTE',{url,name:note.name.replace(/\.txt$/i,'')+'.html',formatted:true});setTimeout(()=>URL.revokeObjectURL(url),120000);break;
@@ -313,6 +367,8 @@
   document.querySelectorAll('[data-menu]').forEach(button => button.addEventListener('click', () => toggleMenu(button)));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => void action(button.dataset.action)));
   $('new-tab').addEventListener('click',()=>void action('new'));
+  $('file-reload').addEventListener('click',()=>void action('reload-file'));
+  $('file-relink').addEventListener('click',()=>void action('relink-file'));
   document.querySelectorAll('[data-format]').forEach(button=>{
     button.addEventListener('pointerdown',event=>event.preventDefault());
     button.addEventListener('click',()=>{
@@ -378,7 +434,7 @@
     if (document.querySelector('dialog[open]')) return;
     if (event.ctrlKey && !event.altKey && !event.metaKey) {
       const key = event.key.toLowerCase();
-      const mapping = {n: 'new', o: 'open', s: 'save', f: 'find', h: 'replace', '+': 'zoom-in', '=': 'zoom-in', '-': 'zoom-out', '0': 'zoom-reset'};
+      const mapping = {n: 'new', o: 'open', s: event.shiftKey?'save-as':'save', f: 'find', h: 'replace', '+': 'zoom-in', '=': 'zoom-in', '-': 'zoom-out', '0': 'zoom-reset'};
       if (mapping[key]) { event.preventDefault(); event.stopPropagation(); void action(mapping[key]); }
       if (key === 'p') { event.preventDefault(); error('Use File > Save as to create a text file, then print it from your usual editor.'); }
     }
@@ -387,13 +443,17 @@
   }, true);
   NoteConnection.onMessage((message, sender, reply) => {
     if (sender.id !== (globalThis.NoteDesktop?.id || chrome.runtime.id)) return;
+    if(message?.type==='NOTE_FILE_PRESENTED'){
+      if(note?.id!==message.noteId||dirty||switchingNote||!globalThis.NotepadAssistant?.visible()){reply({ok:false,accepted:false});return;}
+      if(message.file)acceptFile(message.file);reply({ok:true,accepted:true});return;
+    }
     if(message?.type==='NOTE_AI_PROPOSE'){reply(proposeAI(message));return;}
     if(message?.type==='NOTE_AI_COMMITTED'||message?.type==='NOTE_AI_FAILED'){
       const pending=aiCommit;
       if(pending&&pending.noteId===message.noteId&&pending.requestId===message.editRequestId){
         if(note?.id===message.noteId){
           if(Number.isSafeInteger(message.revision)){note.revision=message.revision;note.updatedAt=message.updatedAt;}
-          if(message.type==='NOTE_AI_COMMITTED'){note.text=message.text;note.html=message.html;if(pending.clock===revisionClock){dirty=false;status('Saved locally');}}
+          if(message.type==='NOTE_AI_COMMITTED'){note.text=message.text;note.html=message.html;if(message.file){acceptFile(message.file);const snapshot=aiUndo.get(note.id);if(snapshot?.requestId===message.editRequestId){snapshot.bindingId=message.file.bindingId;snapshot.afterHash=message.file.hash;}}if(pending.clock===revisionClock){dirty=false;status(desktop&&fileState?'Saved':'Saved locally');}}
           else{dirty=true;error(message.error||'The AI revision could not be saved. Your shown text is retained.');queueSave();}
         }
         aiCommit=null;pending.release();undoChanged();

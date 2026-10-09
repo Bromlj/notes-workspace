@@ -11,8 +11,8 @@ const finish=(threadId,text,status='completed')=>{const t=turns.get(threadId);if
 function editableNote(input){
  if(!input.includes('[NOTES_WORKSPACE_EDITABLE_NOTE]'))return null;
  const match=/^Authoritative editable note file: (.+)$/m.exec(input);if(!match)throw Error('Editable note marker has no authoritative file.');
- const file=path.resolve(JSON.parse(match[1])),owned=path.resolve(process.cwd(),'..','NoteWork')+path.sep;
- if(!file.toLowerCase().startsWith(owned.toLowerCase())||path.basename(file)!=='note.txt')throw Error('Fixture refuses a note outside its isolated NoteWork directory.');
+ const file=path.resolve(JSON.parse(match[1])),owned=path.resolve(process.cwd(),'..')+path.sep;
+ if(!file.toLowerCase().startsWith(owned.toLowerCase())||!['.txt','.md'].includes(path.extname(file).toLowerCase()))throw Error('Fixture refuses a note outside its isolated profile or a non-text note.');
  return file;
 }
 function startTurn(p,id){

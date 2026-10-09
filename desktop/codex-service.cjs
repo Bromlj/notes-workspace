@@ -3,7 +3,9 @@
 // Main-process-only adapter. The renderer gets the fixed application commands
 // in worker-runtime, never this Codex object or a general JSON-RPC transport.
 const {EventEmitter}=require('node:events');
+const path=require('node:path');
 const {Codex}=require('../native/host.cjs');
+const {documentPath}=require('./note-files.cjs');
 
 function loginURL(value){
   if(typeof value!=='string'||value.length>20000)throw Error('Codex returned an invalid sign-in address.');
@@ -16,7 +18,10 @@ function requestID(value){if(typeof value!=='string'||!value||value.length>128)t
 class CodexService extends EventEmitter {
   constructor(options={}){
     super();
-    this.codex=options.codexInstance||new Codex({dataRoot:options.dataRoot,codexPath:options.codexPath,version:options.version||'5.1.1'});
+    this.noteFiles=options.noteFiles;
+    this.defaultProject=options.dataRoot?path.join(options.dataRoot,'Conversations'):null;this.activeNoteGrants=new Map();
+    this.codex=options.codexInstance||new Codex({dataRoot:options.dataRoot,codexPath:options.codexPath,noteFiles:this.noteFiles,version:options.version||'5.2.0'});
+    this.noteFiles?.setWriteGuard((noteId,file)=>this.assertNoteIdle(noteId,file));
     this.updates=new Map();this.revision=0;this.pendingLogin=null;this.loginError=null;this.sandboxPending=false;this.sandboxError=null;
     this.codex.on('update',event=>this.record(event));
     this.codex.on('disconnect',()=>{this.pendingLogin=null;if(this.sandboxPending)this.sandboxError='Codex disconnected during sandbox setup. Check again before starting work.';this.sandboxPending=false;this.emit('accountChanged');this.emit('sandboxChanged');});
@@ -33,6 +38,7 @@ class CodexService extends EventEmitter {
     });
   }
   record(event){
+    if(event.status!=='working')this.activeNoteGrants.delete(event.requestId);
     this.updates.set(event.requestId,{...event,at:++this.revision});
     if(this.updates.size>100){for(const [id,update]of this.updates){if(update.status!=='working'){this.updates.delete(id);if(this.updates.size<=100)break;}}}
     this.emit('update',event);
@@ -43,9 +49,22 @@ class CodexService extends EventEmitter {
       let result;
       switch(action){
         case 'catalog':result=await this.codex.catalog();break;
+        case 'noteStatus':if(!this.noteFiles)throw Error('Direct documents are unavailable.');result={file:await this.noteFiles.status(data.noteId,data.text)};break;
+        case 'noteSave':if(!this.noteFiles)throw Error('Direct documents are unavailable.');this.assertNoteIdle(data.noteId);result={file:await this.noteFiles.save(data.noteId,data)};break;
+        case 'notePrepare':{
+          if(!this.noteFiles)throw Error('Direct documents are unavailable.');this.assertNoteIdle(data.noteId);
+          const current=await this.noteFiles.status(data.noteId,data.text);
+          result={file:await this.noteFiles.save(data.noteId,{bindingId:data.bindingId||current.bindingId,expectedHash:data.expectedHash||(!data.bindingId&&current.text===data.text?current.hash:undefined),text:data.text})};break;
+        }
+        case 'noteVerify':if(!this.noteFiles)throw Error('Direct documents are unavailable.');result={file:await this.noteFiles.verify(data.noteId,data)};break;
+        case 'noteProject':{if(!this.noteFiles)throw Error('Direct documents are unavailable.');const file=await this.noteFiles.status(data.noteId,data.text);result={path:file.managed?null:path.dirname(file.path),defaultProject:this.codex.cwd||this.defaultProject};break;}
         case 'send':case 'review':{
           const id=requestID(data.requestId);
           if(this.updates.has(id))throw Error('This request was already submitted. It will not be sent again.');
+          if(action==='send'&&data.noteEdit?.noteId){
+            const noteId=data.noteEdit.noteId;this.assertNoteIdle(noteId);this.noteFiles?.assertIdle(noteId);
+            this.activeNoteGrants.set(id,{noteId,path:documentPath(this.noteFiles?.pathFor(noteId))});
+          }
           this.record({requestId:id,status:'working',phase:action==='review'?'Starting review':'Starting',text:''});
           try{result=await this.codex[action](data);}catch(error){this.record({requestId:id,status:'failed',text:'',error:error.message});throw error;}
           break;
@@ -67,6 +86,10 @@ class CodexService extends EventEmitter {
       }
       return {ok:true,...result};
     }catch(error){return {ok:false,error:String(error?.message||error).slice(0,4000)};}
+  }
+  assertNoteIdle(noteId,file){
+    const target=documentPath(file||this.noteFiles?.pathFor(noteId)),matches=grant=>grant&&(grant.noteId===noteId||(target&&documentPath(grant.path||grant.file)===target));
+    if([...this.activeNoteGrants.values()].some(matches)||[...this.codex.turns.values()].some(turn=>matches(turn.note)))throw Error('Codex is still editing this document. Your local note is retained; wait for the turn to finish before saving, reloading, relinking or undoing the disk file.');
   }
   async accountStatus(){
     try{

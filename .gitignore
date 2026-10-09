@@ -24,6 +24,9 @@
 auth.json
 connection.json
 notes.json
+document-bindings.json
+Documents/
+NoteWork/
 DesktopData/
 codex-home/
 startup-error.log

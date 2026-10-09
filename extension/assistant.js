@@ -18,7 +18,7 @@
     $('assistant-send').disabled=!enabled||submitting||switching||!settings;
     $('assistant-send').textContent=state.pending?'Steer':'Send';
     $('assistant-stop').hidden=!state.pending;
-    for(const id of ['assistant-new','assistant-project-save','assistant-project-list','assistant-history','assistant-review','assistant-compact'])$(id).disabled=!enabled||switching||!!state.pending;
+    for(const id of ['assistant-new','assistant-project-save','assistant-project-list','assistant-project-browse','assistant-history','assistant-review','assistant-compact'])$(id).disabled=!enabled||switching||!!state.pending;
     if(document.activeElement!==$('assistant-project'))$('assistant-project').value=state.project||settings?.defaultProject||'';
     renderProjectLabel();
     if(state.pending)elapsed();else status(submitError||state.error||(settings?'Ready · Codex connected':'Connecting to Codex…'),!!(submitError||state.error));
@@ -26,19 +26,24 @@
   }
   function renderNoteEditing(){
     const stage=state?.noteEditStage,pending=!!stage&&stage.appliedRevision==null;
+    const desktop=!!globalThis.NoteDesktop,file=globalThis.NotepadEditor?.file?.(),undo=!!globalThis.NotepadEditor?.canUndoAI?.();
     $('assistant-edit-note').checked=state?.editNote===true;
     $('assistant-edit-note').disabled=!enabled||switching||submitting;
-    $('assistant-note-edit-status').textContent=pending?(stage.conflict?'Your note changed. Review and apply the pending revision when ready.':state?.editNote?'A revision is waiting. Show this note to catch up.':'Editing paused. Apply pending can apply this revision once; automatic editing stays off.'):(state?.editNote?'On · the next task can revise this note. Hiding pauses visible changes; work continues.':'Off · your note is not sent automatically.');
+    $('assistant-note-file').hidden=!desktop||!file;$('assistant-note-file').textContent=file?.path||file?.name||'';
+    $('assistant-note-folder-scope').hidden=!desktop;
+    $('assistant-note-edit-status').textContent=pending?(stage.conflict?'The file changed while your displayed note also changed. Review before replacing your draft.':state?.editNote?'A file revision is waiting. Show this note to catch up.':'Editing paused. Apply pending replaces the displayed draft once; automatic updates stay off.'):(state?.editNote?(desktop?'On · Codex tools edit the file directly. Hiding freezes this view while accepted work continues.':'On · the next task can revise this note. Hiding pauses visible changes; work continues.'):(desktop&&state?.pending?'Off for new tasks · accepted file changes can still finish in the active task.':'Off · your note is not sent automatically.'));
+    if(undo&&state?.pending)$('assistant-note-edit-status').textContent+=' Undo AI edit is available when this task finishes.';
+    if(state?.noteFileError)$('assistant-note-edit-status').textContent+=' '+state.noteFileError;
     $('assistant-note-preview').hidden=!pending;$('assistant-note-preview-text').value=pending?stage.text:'';
     $('assistant-note-apply').hidden=$('assistant-note-discard').hidden=!pending;
     $('assistant-note-apply').disabled=!enabled||switching||submitting;
     $('assistant-note-discard').disabled=!enabled||switching;
-    $('assistant-note-undo').hidden=!globalThis.NotepadEditor?.canUndoAI?.();
-    $('assistant-note-undo').disabled=!enabled||switching;
+    $('assistant-note-undo').hidden=!undo;
+    $('assistant-note-undo').disabled=!enabled||switching||!!state?.pending;
   }
   async function syncNote(){
     const current=context();
-    try{await globalThis.NotepadEditor?.flush();if(!enabled||switching||!sameContext(current))return;const r=await request('AI_NOTE_SYNC',{assistantId:current.assistantId});if(sameContext(current))render(r.assistant);}
+    try{await globalThis.NotepadEditor?.flush();if(!enabled||switching||!sameContext(current))return;const r=await request('AI_NOTE_SYNC',{assistantId:current.assistantId,...globalThis.NotepadEditor?.fileGuard?.()});if(sameContext(current))render(r.assistant);}
     catch(e){if(enabled&&sameContext(current))status(e.message,true);}
   }
   function renderActivity(){
@@ -125,7 +130,7 @@
   }
   async function beforeNoteSwitch(){
     const previous=state,oldDraft=question.value;switching=true;clearContext();state=null;status('Opening note…');
-    for(const id of ['assistant-new','assistant-project-save','assistant-project-list','assistant-history','assistant-review','assistant-compact'])$(id).disabled=true;
+    for(const id of ['assistant-new','assistant-project-save','assistant-project-list','assistant-project-browse','assistant-history','assistant-review','assistant-compact'])$(id).disabled=true;
     if(previous?.id)await request('AI_DRAFT',{text:oldDraft,assistantId:previous.id});
   }
   function contextChanged(assistant){clearContext();switching=false;state=null;render(assistant,true);void loadProjects();if(enabled){void syncNote();if(!$('assistant-settings').hidden)void history();}}
@@ -135,12 +140,12 @@
     $('assistant-send').disabled=true;$('editor').focus({preventScroll:true});void saveDraft().catch(()=>{});if(notify)void request('HIDE').catch(()=>{});
   }
   async function restore(){if(restoring||enabled||!globalThis.notepadReady){if(enabled)question.focus();return;}restoring=true;const token=crypto.randomUUID();restoreToken=token;try{await request('RESUME',{token});}catch(e){if(restoreToken===token){$('error').textContent=e.message;$('error').hidden=false;restoreToken=null;}}finally{if(restoreToken===token)restoring=false;}}
-  globalThis.NotepadAssistant=Object.freeze({hide,restore,beforeNoteSwitch,cancelNoteSwitch,noteContext:contextChanged,token:()=>restoreToken,matches:t=>!!t&&t===restoreToken,visible:()=>enabled&&!panel.hidden&&!switching,owns:id=>state?.id===id&&!switching});
+  globalThis.NotepadAssistant=Object.freeze({hide,restore,beforeNoteSwitch,cancelNoteSwitch,noteContext:contextChanged,chooseProject:selectProject,working:()=>!!state?.pending,token:()=>restoreToken,matches:t=>!!t&&t===restoreToken,visible:()=>enabled&&!panel.hidden&&!switching,owns:id=>state?.id===id&&!switching});
   function sameProject(a,b){return String(a||'').replace(/[\\/]+$/,'').toLowerCase()===String(b||'').replace(/[\\/]+$/,'').toLowerCase();}
   function renderProjectLabel(){
     const path=state?.project||'',project=projects.find(p=>sameProject(p.path,path));
     $('assistant-current-project').textContent=path?(project?.name||path.split(/[\\/]/).filter(Boolean).pop()||path):'No project selected';
-    $('assistant-current-project').title=path||'Choose a folder in Options to work on project files.';
+    $('assistant-current-project').title=path||'Choose or browse a project folder below.';
     const select=$('assistant-project-list');select.value=project?.id||'';
     if(document.activeElement!==$('assistant-project-name'))$('assistant-project-name').value=project?.name||'';
   }
@@ -167,7 +172,7 @@
   async function submit(){
     if(!enabled||switching||submitting||!settings)return;const text=question.value.trim();if(!text)return;const current=context();
     submitting=true;submitError='';const clock=draftClock,steering=!!state?.pending;render();status(steering?'Sending follow-up…':'Starting…');
-    try{await saveDraft();if(!steering)await globalThis.NotepadEditor?.flush();if(!enabled||!sameContext(current))return;const value=await request(steering?'AI_STEER':'AI_SEND',{id:crypto.randomUUID(),text,files:files.map(f=>f.id),assistantId:current.assistantId});if(!sameContext(current))return;if(clock===draftClock)question.value='';files=[];renderFiles();render(value.assistant);await saveDraft();if(enabled&&sameContext(current))question.focus();}catch(e){if(sameContext(current)){submitError=e.message;status(submitError,true);}}finally{if(sameContext(current)){submitting=false;$('assistant-send').disabled=!enabled||switching||!settings;$('assistant-send').textContent=state?.pending?'Steer':'Send';renderNoteEditing();}}
+    try{await saveDraft();if(!steering){if(globalThis.NoteDesktop)await globalThis.NotepadEditor?.ensureFile();await globalThis.NotepadEditor?.flush();}if(!enabled||!sameContext(current))return;const file=globalThis.NotepadEditor?.file?.();const value=await request(steering?'AI_STEER':'AI_SEND',{id:crypto.randomUUID(),text,files:files.map(f=>f.id),assistantId:current.assistantId,...file?{noteBindingId:file.bindingId,noteFileHash:file.hash}:{}});if(!sameContext(current))return;if(clock===draftClock)question.value='';files=[];renderFiles();render(value.assistant);await saveDraft();if(enabled&&sameContext(current))question.focus();}catch(e){if(sameContext(current)){submitError=e.message;status(submitError,true);}}finally{if(sameContext(current)){submitting=false;$('assistant-send').disabled=!enabled||switching||!settings;$('assistant-send').textContent=state?.pending?'Steer':'Send';renderNoteEditing();}}
   }
   async function attach(incoming){
     if(!enabled||switching||!incoming.length)return;const epoch=uploadEpoch,current=context();
@@ -187,21 +192,22 @@
   $('assistant-close').addEventListener('click',()=>hide());$('assistant-send').addEventListener('click',()=>void submit());
   $('assistant-edit-note').addEventListener('change',async()=>{
     if(!enabled||switching)return;const current=context(),on=$('assistant-edit-note').checked;
-    try{if(on)await globalThis.NotepadEditor?.flush();if(!enabled||!sameContext(current))return;const r=await request('AI_NOTE_EDIT_SET',{enabled:on,assistantId:current.assistantId});if(sameContext(current))render(r.assistant);}catch(e){if(sameContext(current)){renderNoteEditing();status(e.message,true);}}
+    try{if(on){if(globalThis.NoteDesktop)await globalThis.NotepadEditor?.ensureFile();await globalThis.NotepadEditor?.flush();}if(!enabled||!sameContext(current))return;const r=await request('AI_NOTE_EDIT_SET',{enabled:on,assistantId:current.assistantId});if(sameContext(current))render(r.assistant);}catch(e){if(sameContext(current)){renderNoteEditing();status(e.message,true);}}
   });
   $('assistant-note-apply').addEventListener('click',()=>{if(enabled&&!switching&&!$('note-apply-dialog').open){$('note-apply-dialog').returnValue='cancel';$('note-apply-dialog').showModal();}});
   $('note-apply-dialog').addEventListener('close',async()=>{
     if($('note-apply-dialog').returnValue!=='apply'||!enabled||switching)return;const current=context();submitError='';status('Applying pending revision…');
-    try{await globalThis.NotepadEditor?.flush();if(!enabled||!sameContext(current))return;const r=await request('AI_NOTE_APPLY',{assistantId:current.assistantId,force:true});if(!sameContext(current))return;render(r.assistant);if(r.applied){status('Pending revision applied. Undo AI edit restores your previous note.');}else if(['already_applied','unchanged'].includes(r.reason)){status('Your note already contains this revision.');}else{const reasons={disabled:'There is no pending revision to apply.',hidden:'Show the Reference panel before applying this revision.',missing_note:'The note could not be found. Reopen it and try again.',context_changed:'The active note changed. Return to the original note to apply its revision.',local_changes:'The note changed during application. Your text is kept; review and try again.',formatting_conflict:'The revision could not be inserted into this formatted note. Your original text is kept.',unavailable:'The note editor did not respond. Reopen the panel and try again.'};submitError=r.error||reasons[r.reason]||'The pending revision was not applied. Your existing note is kept.';status(submitError,true);}}catch(e){if(sameContext(current)){submitError=e.message;status(e.message,true);}}
+    try{await globalThis.NotepadEditor?.flush();if(!enabled||!sameContext(current))return;const r=await request('AI_NOTE_APPLY',{assistantId:current.assistantId,force:true,...globalThis.NotepadEditor?.fileGuard?.()});if(!sameContext(current))return;render(r.assistant);if(r.applied){status('Pending revision applied. Undo AI edit restores your previous note.');}else if(['already_applied','unchanged'].includes(r.reason)){status('Your note already contains this revision.');}else{const reasons={disabled:'There is no pending revision to apply.',hidden:'Show the Reference panel before applying this revision.',missing_note:'The note could not be found. Reopen it and try again.',context_changed:'The active note changed. Return to the original note to apply its revision.',local_changes:'The note changed during application. Your text is kept; review and try again.',disk_changed:'The file changed again. Your draft is kept. Reload the file or review its latest revision.',formatting_conflict:'The revision could not be inserted into this formatted note. Your original text is kept.',unavailable:'The note editor did not respond. Reopen the panel and try again.'};submitError=r.error||reasons[r.reason]||'The pending revision was not applied. Your existing note is kept.';status(submitError,true);}}catch(e){if(sameContext(current)){submitError=e.message;status(e.message,true);}}
   });
   $('assistant-note-discard').addEventListener('click',async()=>{
     if(!enabled||switching)return;const current=context();try{const r=await request('AI_NOTE_DISCARD',{assistantId:current.assistantId});if(sameContext(current))render(r.assistant);}catch(e){if(sameContext(current))status(e.message,true);}
   });
   $('assistant-note-undo').addEventListener('click',async()=>{
-    if(!enabled||switching)return;const current=context();
+    if(!enabled||switching||state?.pending)return;const current=context();
     try{const r=await request('AI_NOTE_EDIT_SET',{enabled:false,assistantId:current.assistantId});if(!enabled||!sameContext(current))return;render(r.assistant);await globalThis.NotepadEditor?.undoAI();renderNoteEditing();}catch(e){if(sameContext(current))status(e.message,true);}
   });
   window.addEventListener('notepad-ai-undo-changed',renderNoteEditing);
+  window.addEventListener('notepad-file-state-changed',renderNoteEditing);
   $('assistant-attach').addEventListener('click',()=>{if(enabled)$('assistant-upload').click();});$('assistant-upload').addEventListener('change',()=>void attach([...$('assistant-upload').files]));
   $('assistant-options').addEventListener('click',showOptions);$('assistant-model').addEventListener('change',()=>void choose(true));$('assistant-thinking').addEventListener('change',()=>void choose(false));$('assistant-diagnostics').addEventListener('click',()=>{if(enabled)void connect(true);});
   $('assistant-stop').addEventListener('click',()=>{if(!enabled||switching)return;const current=context();submitError='';status('Stopping…');void request('AI_STOP',{assistantId:current.assistantId}).catch(e=>{if(sameContext(current))status(e.message,true);});});

@@ -1,6 +1,6 @@
 # Notes Workspace
 
-A Windows notepad with an optional Codex panel, independent chats for each note, project folders, attachments, model and thinking controls, and opt-in AI revisions with undo.
+A Windows notepad with the Codex agent inside an optional panel. Codex can edit actual files, run project commands, use attachments, and continue working while its panel is hidden. Each note has its own chat, with model and thinking controls and opt-in note revisions with undo.
 
 ## Install the Windows app
 
@@ -20,15 +20,18 @@ Each person signs in with **their own ChatGPT account** through the Account page
 
 ## Use it
 
-- Write, format, open and save ordinary notes normally.
+- Write and format ordinary notes normally. **File > Open** binds a real UTF-8 text file; **Save** updates that same file, and **Save as** chooses a new file. Untitled notes get a persistent `Documents/<note-id>/note.txt` inside the app's local data folder.
 - **Alt+W** reveals the AI panel; **Alt+Q** hides it immediately. Hiding does not cancel accepted work.
 - **Alt+Shift+S** opens settings, including an optional restore passphrase.
-- The **+** button creates a separate note and Codex chat. Select a project folder in the panel to let Codex work on that project's files using its normal sandbox and approval controls.
+- The **+** button creates a separate note and Codex chat. The project chooser is visible in the panel: click **Browse** to select a folder. Codex can edit that project's actual files and run commands using its normal sandbox and approval controls.
 - Choose models and thinking levels from the catalog returned by your signed-in account. Attach supported documents or images with the attachment control.
-- Enable **Edit this note** to allow Codex to revise the current note. This defaults off for each note. While hidden, the visible note and its recovery text stay frozen; showing AI catches up to the staged revision. If you typed meanwhile, review and explicitly apply or discard the pending revision. **Undo AI edit** restores the pre-task note and turns note editing off.
+- Enable **Edit this note** before asking Codex to revise the current note. This defaults off for each note/chat. Codex edits the actual bound file, and its progress appears in the note while visible.
+- **Alt+Q freezes the visible note and its recovery text, while Codex continues changing the actual disk file in the background.** Another program opening that file can see those disk changes. **Alt+W** catches the note up to the latest revision. If you typed meanwhile, review and explicitly apply or discard the pending revision.
+- **Undo AI edit** becomes available after the task completes. It restores the pre-task file contents and rich note, provided neither has changed since the AI revision. It turns automatic note editing off and refuses to overwrite later local or external changes.
 - **Apply pending** can apply one staged revision even when **Edit this note** is off. Confirm the replacement when asked. This one-time action leaves automatic note editing off; you can undo it afterward.
+- If the disk file changed elsewhere, a guarded **Save** reports the conflict and keeps your local recovery text. Use **Reload from disk** to explicitly take the disk version. If the file moved or was renamed, use **Relink moved file** to select its current location; the app does not silently recreate the old path.
 
-The cover provides visual privacy. Notes and local backups are not encrypted, and the app does not hide its processes or system activity. A restore passphrase prevents accidental reveals; it does not secure an unlocked computer.
+The cover provides visual privacy. Notes, actual document files and local backups are not encrypted, and the app does not hide its processes or system activity. A restore passphrase prevents accidental reveals; it does not secure an unlocked computer.
 
 ## Build from source
 
@@ -52,12 +55,12 @@ The ZIP and its checksum are written to `release/`. The build copies explicit ap
 
 ## Tests
 
-The published 5.1.1 build passed **127 helper/protocol/storage tests and 71 packaged-app checks**, including real Codex file edits and commands. See [the test report](desktop/TEST_REPORT.md) for the measured scope and limits.
+The 5.2.0 release passed **152 helper tests and 101 packaged-app checks**, including live Codex edits to actual note files, project file moves/creation and successful commands while hidden. The [test report](desktop/TEST_REPORT.md) records the measured scope and limits.
 
 After installing the source dependencies, run the helper tests without signing in:
 
 ```powershell
-node --test tests/core.test.cjs tests/direct.test.cjs tests/agent.test.cjs tests/desktop-service.test.cjs tests/desktop-backup.test.cjs tests/desktop-storage.test.cjs tests/note-host.test.cjs tests/worker-note-edit.test.cjs
+node --test tests/core.test.cjs tests/direct.test.cjs tests/agent.test.cjs tests/desktop-service.test.cjs tests/desktop-backup.test.cjs tests/desktop-storage.test.cjs tests/desktop-note-files.test.cjs tests/desktop-direct-host.test.cjs tests/desktop-note-file-races.test.cjs tests/note-host.test.cjs tests/worker-note-edit.test.cjs
 ```
 
 For packaged application tests, first build the app and install the test driver:
@@ -67,16 +70,18 @@ npm install --prefix tests
 node tests/desktop-e2e.cjs
 node tests/desktop-import.cjs
 node tests/desktop-note-edit-e2e.cjs
+node tests/desktop-direct-file-e2e.cjs
 node tests/desktop-first-run.cjs
 ```
 
-These scripts launch the built application with disposable profiles. `desktop-first-run.cjs` uses the real bundled Codex runtime with an empty sign-in profile. The other scripts use the included app-server fixture. Test screenshots, profiles and result files are generated locally and ignored by Git.
+These scripts launch the built application with disposable profiles and actual disposable text files. `desktop-first-run.cjs` uses the real bundled Codex runtime with an empty sign-in profile. The other scripts use the included app-server fixture. Test screenshots, document bindings, profiles and result files are generated locally and ignored by Git.
 
 The following **live tests use your current Codex sign-in and account allowance**. They make real requests, but restrict edits to disposable projects created by the tests and do not automatically approve requests for additional access:
 
 ```powershell
 node tests/desktop-live.cjs
 node tests/desktop-note-edit-live.cjs
+node tests/desktop-direct-file-live.cjs
 ```
 
 Optional overrides: `PLAYWRIGHT_MODULE` selects an existing Playwright installation, `NOTES_DESKTOP_EXE` selects a built executable, and `NOTES_TEST_NODE` selects Node for deterministic fixtures. Defaults work with the commands above.

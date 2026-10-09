@@ -2,12 +2,11 @@
 (() => {
   const $=id=>document.getElementById(id);
   if(location.pathname==='/editor.html') {
-    const buttons=document.createElement('div');buttons.className='assistant-actions';
-    for(const [label,type]of [['Browse folder…','DESKTOP_CHOOSE_PROJECT'],['Account…','DESKTOP_OPEN_ACCOUNT']]) {
-      const button=document.createElement('button');button.type='button';button.textContent=label;
-      button.addEventListener('click',async()=>{try{const r=await NoteDesktop.request(type);if(!r.ok)throw Error(r.error);if(r.path)$('assistant-project').value=r.path;}catch(e){$('assistant-status').textContent=e.message;}});buttons.append(button);
-    }
-    $('assistant-project-save').parentElement.after(buttons);
+    const browse=$('assistant-project-browse');browse.hidden=false;browse.textContent='Browse folder…';
+    browse.addEventListener('click',async()=>{if(!NotepadAssistant.visible())return;try{const r=await NoteDesktop.request('DESKTOP_CHOOSE_PROJECT');if(!r.ok)throw Error(r.error);if(r.path&&NotepadAssistant.visible())await NotepadAssistant.chooseProject(r.path);}catch(e){$('assistant-status').textContent=e.message;}});
+    const buttons=document.createElement('div');buttons.className='assistant-actions';const account=document.createElement('button');account.type='button';account.id='assistant-account';account.textContent='Account…';account.addEventListener('click',async()=>{try{const r=await NoteDesktop.request('DESKTOP_OPEN_ACCOUNT');if(!r.ok)throw Error(r.error);}catch(e){$('assistant-status').textContent=e.message;}});buttons.append(account);$('assistant-diagnostics').after(buttons);
+    document.querySelectorAll('.desktop-file-action').forEach(button=>button.hidden=false);
+    const save=document.querySelector('[data-action="save"]');save.firstChild.textContent='Save';
     $('save-dialog').querySelector('.hint').textContent='Choose a location in the Windows Save As dialog. Text exports omit formatting.';
     $('recent-dialog').querySelector('.hint').textContent='Saved locally by Notes Workspace on this computer.';
   }

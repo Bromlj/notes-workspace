@@ -8,12 +8,12 @@ root = Path(__file__).resolve().parent.parent
 program = root / 'desktop' / 'dist' / 'Notes Workspace'
 release = root / 'release'
 release.mkdir(exist_ok=True)
-archive = release / 'Notes-Workspace-Desktop-5.1.1-Windows-x64.zip'
+archive = release / 'Notes-Workspace-Desktop-5.2.0-Windows-x64.zip'
 for required in ['Notes Workspace.exe', 'Install.cmd', 'START HERE.txt', 'TEST_REPORT.md', 'resources/app/main.cjs', 'resources/codex/bin/codex.exe']:
     if not (program / required).is_file():
         raise RuntimeError('Missing release file: ' + required)
-forbidden = {'auth.json', 'connection.json', 'notes.json', 'cookies', 'local state', '.codex', 'desktopdata', 'codex-home', 'startup-error.log'}
-manifest = {'version': '5.1.1', 'platform': 'Windows x64', 'files': []}
+forbidden = {'auth.json', 'connection.json', 'notes.json', 'document-bindings.json', 'cookies', 'local state', '.codex', 'desktopdata', 'codex-home', 'notework', 'startup-error.log'}
+manifest = {'version': '5.2.0', 'platform': 'Windows x64', 'files': []}
 for file in sorted(program.rglob('*')):
     if not file.is_file() or file.name == 'RELEASE-MANIFEST.json':
         continue

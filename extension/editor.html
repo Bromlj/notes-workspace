@@ -28,6 +28,9 @@
       <button role="menuitem" data-action="new">New<span>Ctrl+N</span></button>
       <button role="menuitem" data-action="open">Open…<span>Ctrl+O</span></button>
       <button role="menuitem" data-action="save">Save as…<span>Ctrl+S</span></button>
+      <button role="menuitem" data-action="save-as" class="desktop-file-action" hidden>Save as…<span>Ctrl+Shift+S</span></button>
+      <button role="menuitem" data-action="reload-file" class="desktop-file-action" hidden>Reload from disk…</button>
+      <button role="menuitem" data-action="relink-file" class="desktop-file-action" hidden>Relink moved file…</button>
       <hr><button role="menuitem" data-action="recent">Recent notes…</button>
       <button role="menuitem" data-action="save-html">Save formatted HTML…</button>
       <hr><button role="menuitem" data-action="close">Exit</button>
@@ -67,11 +70,21 @@
     <span id="find-status" aria-live="polite"></span>
   </section>
   <div id="error" role="status" hidden></div>
+  <section id="file-statebar" aria-label="File status" hidden><span id="file-status" role="status"></span><button type="button" id="file-reload">Reload from disk…</button><button type="button" id="file-relink">Relink file…</button></section>
   <div id="work-area">
     <div id="editor" role="textbox" aria-label="Document text" aria-multiline="true" contenteditable="false" spellcheck="false"></div>
     <aside id="assistant-panel" aria-label="Reference panel" hidden>
       <div class="assistant-heading"><span>Reference</span><button type="button" id="assistant-close" aria-label="Hide reference panel">×</button></div>
       <div id="assistant-current-project" aria-label="Current project"></div>
+      <section id="assistant-project-controls" aria-label="Project folder">
+        <div class="assistant-project-row"><label>Project<select id="assistant-project-list" aria-label="Saved projects"><option value="">Choose a project…</option></select></label><button type="button" id="assistant-project-browse" hidden>Browse…</button></div>
+        <details id="assistant-project-details"><summary>Folder details</summary>
+          <label class="assistant-project-label">Project name<input id="assistant-project-name" type="text" aria-label="Project name" spellcheck="false" placeholder="Optional name"></label>
+          <label class="assistant-project-label">Project folder<input id="assistant-project" type="text" aria-label="Project folder" spellcheck="false" placeholder="Full folder path"></label>
+          <div class="assistant-actions"><button type="button" id="assistant-project-save">Use folder</button></div>
+          <small id="assistant-project-hint">Choose a folder for Codex to read, edit and run tools in. Each note keeps its own conversations. Additional access is requested here.</small>
+        </details>
+      </section>
       <textarea id="assistant-output" aria-label="Responses" readonly spellcheck="false"></textarea>
       <div id="assistant-progress" hidden>
         <ol id="assistant-plan" aria-label="Work plan" hidden></ol>
@@ -83,6 +96,8 @@
       <div id="assistant-files" hidden></div>
       <section id="assistant-note-edit" aria-label="Note editing">
         <label><input id="assistant-edit-note" type="checkbox"> Edit this note</label>
+        <small id="assistant-note-file" hidden></small>
+        <small id="assistant-note-folder-scope" hidden>Turning this on lets Codex work with this file and its containing folder for the task. Codex grants folder access rather than access to one file.</small>
         <small id="assistant-note-edit-status">Off · your note is not sent automatically.</small>
         <details id="assistant-note-preview" hidden><summary>Pending note revision</summary><textarea id="assistant-note-preview-text" aria-label="Pending note revision" readonly></textarea></details>
         <div class="assistant-actions"><button type="button" id="assistant-note-apply" hidden>Apply pending</button><button type="button" id="assistant-note-discard" hidden>Discard pending</button><button type="button" id="assistant-note-undo" hidden>Undo AI edit</button></div>
@@ -91,11 +106,6 @@
       <div class="assistant-actions"><button type="button" id="assistant-send">Send</button><button type="button" id="assistant-attach">Attach…</button><button type="button" id="assistant-options">Options</button><button type="button" id="assistant-stop" hidden>Stop</button></div>
       <small class="assistant-hint">Enter sends · Shift+Enter adds a line · Alt+Q hides</small>
       <section id="assistant-settings" hidden>
-        <label>Project<select id="assistant-project-list" aria-label="Saved projects"><option value="">Choose a project…</option></select></label>
-        <label class="assistant-project-label">Project name<input id="assistant-project-name" type="text" aria-label="Project name" spellcheck="false" placeholder="Optional name"></label>
-        <label class="assistant-project-label">Project folder<input id="assistant-project" type="text" aria-label="Project folder" spellcheck="false" placeholder="Full folder path"></label>
-        <div class="assistant-actions"><button type="button" id="assistant-project-save">Use folder</button></div>
-        <small id="assistant-project-hint">Projects are saved folders. Each note has its own conversation; new notes inherit this project. Each project keeps separate conversations for this note. Codex can read and change project files, with additional access requested here.</small>
         <label>Model<select id="assistant-model" aria-label="Model"></select></label>
         <label>Thinking<select id="assistant-thinking" aria-label="Thinking"></select></label>
         <div id="assistant-choices"></div>

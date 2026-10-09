@@ -4,6 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('n
 const {createRuntime,ORIGIN}=require('./worker-runtime.cjs');
 const {createService}=require('./codex-service.cjs');
 const {sanitizeBackup:backupData,mergeBackup}=require('./backup.cjs');
+const {createNoteFiles}=require('./note-files.cjs');
 const APP_ID='NotesWorkspace.Desktop';
 app.setName('Notes Workspace');app.setAppUserModelId(APP_ID);
 const dataRoot=path.resolve(process.env.NOTES_DESKTOP_DATA_DIR||path.join(process.env.LOCALAPPDATA||app.getPath('appData'),'NotesWorkspace','DesktopData'));
@@ -13,7 +14,7 @@ const uiRoot=path.join(__dirname,'ui'),iconPath=path.join(uiRoot,'icons','notes.
 const pages=new Set(['editor.html','options.html','onboarding.html']);
 const assets=new Set(['editor.html','editor.css','options.html','options.css','options.js','onboarding.html','onboarding.js','onboarding.css','core.js','worker.js','client.js','rich-editor.js','editor.js','assistant.js','desktop-ui.js','icons/notes.ico','icons/notes16.png','icons/notes32.png','icons/notes48.png','icons/notes128.png','icons/notes256.png']);
 const windows=new Map(),exportsByWindow=new Map();
-let runtime,service,quitting=false,closing=false,settingsWindow,accountWindow,desktopPrivacyEpoch=0;
+let runtime,service,noteFiles,quitting=false,closing=false,settingsWindow,accountWindow,desktopPrivacyEpoch=0;
 function info(win){if(!win||win.isDestroyed())throw Error('This notepad window has closed.');return {id:win.id,windowId:win.id,url:win.webContents.getURL(),active:win.isFocused(),mutedInfo:{muted:win.webContents.isAudioMuted()},autoDiscardable:false};}
 function trusted(event){const win=BrowserWindow.fromWebContents(event.sender),url=new URL(event.senderFrame?.url||'about:blank');if(!win||!windows.has(win.id)||event.senderFrame!==event.sender.mainFrame||!pages.has(url.pathname.slice(1))||url.protocol!=='notes:'||url.host!=='app')throw Error('This action must come from Notes Workspace.');return win;}
 function externalLogin(url){const u=new URL(url);if(u.protocol!=='https:'||!['auth.openai.com','auth0.openai.com','chatgpt.com','login.openai.com'].includes(u.hostname))throw Error('Unexpected sign-in address.');return shell.openExternal(u.href);}
@@ -79,6 +80,34 @@ async function desktopRequest(type,data,win){
     default:throw Error('Unknown desktop action.');
   }
 }
+async function noteFileRequest(type,data,win){
+  if(win.webContents.getURL()!==ORIGIN+'/editor.html')throw Error('Open the notepad document first.');
+  const sender={id:win.id,url:win.webContents.getURL()},context=await runtime.request('NOTE_FILE_CONTEXT',{},sender);
+  if(!context.ok)throw Error(context.error);const current=context.note;
+  if(data.noteId!==undefined&&data.noteId!==current.id)throw Error('The selected document changed. Try again in its current tab.');
+  const idle=()=>{if(context.assistant.pending?.noteEditBase)throw Error('Codex is still editing this document. Your local note is retained; wait for the turn to finish.');service.assertNoteIdle(current.id);};
+  const currentAgain=async()=>{const next=await runtime.request('NOTE_FILE_CONTEXT',{},sender);if(!next.ok||next.note.id!==current.id||next.note.revision!==current.revision)throw Error('The selected document changed while the dialog was open. Try again.');idle();};
+  const reload=async(file,relinked=false)=>{const result=await runtime.request('RELOAD_NOTE_FILE',{noteId:current.id,text:file.text,name:file.name,relinked},sender);if(!result.ok)throw Error(result.error);return {...result,file};};
+  const saveAs=async()=>{idle();const picked=await dialog.showSaveDialog(win,{title:'Save document as',defaultPath:path.basename(typeof data.name==='string'?data.name:current.name||'Untitled.txt'),properties:['showOverwriteConfirmation'],filters:[{name:'UTF-8 text document',extensions:['txt']},{name:'All files',extensions:['*']}]});if(picked.canceled)return {cancelled:true};await currentAgain();const file=await noteFiles.saveAs(current.id,picked.filePath,current.text),renamed=await runtime.request('NAME_NOTE_FILE',{noteId:current.id,name:file.name,bindingId:file.bindingId},sender);if(!renamed.ok)throw Error(renamed.error);return {...renamed,file};};
+  switch(type){
+    case 'NOTE_FILE_STATUS':return {file:await noteFiles.status(current.id,current.text)};
+    case 'NOTE_FILE_OPEN':{
+      const picked=await dialog.showOpenDialog(win,{title:'Open text document',properties:['openFile'],filters:[{name:'UTF-8 text documents',extensions:['txt','md','log','csv','json','js','cjs','mjs','py','css','html']},{name:'All files',extensions:['*']}]});if(picked.canceled)return {cancelled:true};
+      const latest=await runtime.request('NOTE_FILE_CONTEXT',{},sender);if(!latest.ok||latest.note.id!==current.id)throw Error('The selected note changed while the dialog was open.');
+      const selection=await noteFiles.open(picked.filePaths[0]),created=await runtime.request('NEW_NOTE',{name:selection.name,text:selection.text},sender);if(!created.ok)throw Error(created.error);
+      try{const file=await noteFiles.bind(created.note.id,selection),project=await runtime.request('NOTE_FILE_PROJECT',{noteId:created.note.id},sender);if(!project.ok)throw Error(project.error);return {...project,file};}
+      catch(error){await runtime.request('OPEN_NOTE',{id:current.id},sender).catch(()=>undefined);throw error;}
+    }
+    case 'NOTE_FILE_SAVE':{idle();const file=await noteFiles.status(current.id,current.text);if(file.managed)return saveAs();return {file:await noteFiles.save(current.id,{bindingId:data.bindingId,expectedHash:data.expectedHash,text:current.text})};}
+    case 'NOTE_FILE_SAVE_AS':return saveAs();
+    case 'NOTE_FILE_RELOAD':idle();return reload(await noteFiles.reload(current.id,{bindingId:data.bindingId}));
+    case 'NOTE_FILE_RELINK':{
+      idle();const picked=await dialog.showOpenDialog(win,{title:'Relink text document',properties:['openFile'],filters:[{name:'Text document',extensions:['txt','md','log']},{name:'All files',extensions:['*']}]});if(picked.canceled)return {cancelled:true};await currentAgain();const selection=await noteFiles.open(picked.filePaths[0]),file=await noteFiles.bind(current.id,selection),loaded=await reload(file,true),project=await runtime.request('NOTE_FILE_PROJECT',{noteId:current.id},sender);if(!project.ok)throw Error(project.error);return {...loaded,...project,file};
+    }
+    case 'NOTE_FILE_UNDO':if(!runtime.enabled(win.id))throw Error('Show the panel before undoing an AI document revision.');if(context.assistant.pending)throw Error('Wait for the current turn to finish before undoing its document revision.');idle();return {file:await noteFiles.undo(current.id,{bindingId:data.bindingId,expectedHash:data.expectedHash,text:data.text})};
+    default:throw Error('Unknown document action.');
+  }
+}
 ipcMain.handle('notes:connect',async event=>{const win=trusted(event);await runtime.connect(win.id,message=>{if(!win.isDestroyed())win.webContents.send('notes:event',message);});return true;});
 ipcMain.on('notes:reply',(event,message)=>{try{const win=trusted(event);void runtime.receive(win.id,message).catch(()=>{});}catch{}});
 ipcMain.handle('notes:request',async(event,payload)=>{
@@ -88,6 +117,7 @@ ipcMain.handle('notes:request',async(event,payload)=>{
     if(type==='HIDE'){desktopPrivacyEpoch++;concealAuxiliary();}
     if(new URL(win.webContents.getURL()).pathname==='/editor.html'&&['DESKTOP_CHOOSE_PROJECT','DESKTOP_OPEN_ACCOUNT'].includes(type)&&!runtime.enabled(win.id))throw Error('The panel is disabled. Press Alt+W to enable it.');
     if(type.startsWith('DESKTOP_'))return {ok:true,...await desktopRequest(type,data,win)};
+    if(type.startsWith('NOTE_FILE_')&&type!=='NOTE_FILE_CONTEXT')return {ok:true,...await noteFileRequest(type,data,win)};
     if(type==='DOWNLOAD_NOTE'){
       if(new URL(win.webContents.getURL()).pathname!=='/editor.html'||!Array.isArray(data.bytes)||data.bytes.length>8*1024*1024||!data.bytes.every(n=>Number.isInteger(n)&&n>=0&&n<=255)||typeof data.url!=='string'||!data.url.startsWith('blob:'+ORIGIN+'/'))throw Error('Invalid local export.');
       exportsByWindow.set(win.id,{url:data.url,bytes:Buffer.from(data.bytes)});delete data.bytes;
@@ -108,7 +138,7 @@ else {
       headers.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'");headers.set('X-Content-Type-Options','nosniff');return new Response(response.body,{status:response.status,headers});
     });
     const bundled=path.join(process.resourcesPath,'codex','bin','codex.exe');
-    service=createService({dataRoot,codexPath:fs.existsSync(bundled)?bundled:undefined});
+    noteFiles=createNoteFiles({dataRoot});service=createService({dataRoot,noteFiles,codexPath:fs.existsSync(bundled)?bundled:undefined});
     runtime=createRuntime({uiRoot,dataFile:path.join(dataRoot,'notes.json'),native:(action,data)=>service.invoke(action,data),windows:{
       get:id=>info(windows.get(id)),list:()=>[...windows.values()].map(info),
       create:async url=>info(await createWindow(new URL(url).pathname.slice(1))),
@@ -125,4 +155,4 @@ app.on('before-quit',event=>{
   if(quitting)return;event.preventDefault();if(closing)return;closing=true;
   Promise.all([...windows.values()].filter(w=>w.webContents.getURL()===ORIGIN+'/editor.html').map(w=>w.webContents.executeJavaScript('Promise.all([globalThis.NotepadEditor?.flush(),globalThis.NotepadAssistant?.beforeNoteSwitch()])').catch(()=>{}))).then(()=>runtime?.close()).finally(()=>{service?.close();quitting=true;app.quit();});
 });
-module.exports={diagnostics:()=>({appId:APP_ID,iconPath,dataRoot,version:'5.1.1'})};
+module.exports={diagnostics:()=>({appId:APP_ID,iconPath,dataRoot,version:'5.2.0'})};

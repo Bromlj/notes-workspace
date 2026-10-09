@@ -1,1 +1,1 @@
-{"name":"notes-workspace-desktop","version":"5.1.1","private":true,"description":"A local notepad with an optional Codex panel","main":"main.cjs","devDependencies":{"@electron/asar":"4.2.0","electron":"44.7.0","rcedit":"5.0.2"},"dependencies":{"@openai/codex":"0.160.0"}}
+{"name":"notes-workspace-desktop","version":"5.2.0","private":true,"description":"A local notepad with an optional Codex panel","main":"main.cjs","devDependencies":{"@electron/asar":"4.2.0","electron":"44.7.0","rcedit":"5.0.2"},"dependencies":{"@openai/codex":"0.160.0"}}

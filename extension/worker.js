@@ -81,12 +81,14 @@ async function nativeUpdate(e) {
   const job=running.get(e.requestId);if(!job)return;
   const a=await local(`assistant:${job.assistantId}`,null);if(!a?.pending||a.pending.id!==e.requestId)return;
   if(e.threadId)a.threadId=e.threadId;if(typeof e.text==='string')a.pending.text=e.text;
+  if(typeof e.noteFileError==='string')a.noteFileError=e.noteFileError;
   for(const key of ['activity','diff','plan','requests'])if(e[key]!==undefined)a.pending[key]=e[key];
   const edited=e.noteEdit,base=a.pending.noteEditBase;
   if(a.editNote===true&&base&&edited&&edited.noteId===a.noteId&&edited.baseRevision===base.revision&&Number.isSafeInteger(edited.sequence)&&edited.sequence>=0&&edited.sequence>(a.pending.noteEditDiscardedSequence??-1)&&typeof edited.text==='string'&&new TextEncoder().encode(edited.text).length<=C.MAX_TEXT_BYTES&&(!a.noteEditStage||a.noteEditStage.requestId!==e.requestId||edited.sequence>a.noteEditStage.sequence)) {
     const previous=a.noteEditStage?.requestId===e.requestId?a.noteEditStage:null;
     const applied=a.pending.noteEditAppliedBase;
     a.noteEditStage={requestId:e.requestId,text:edited.text,sequence:edited.sequence,baseRevision:previous?.baseRevision??applied?.revision??base.revision,baseText:previous?.baseText??applied?.text??base.text,baseHtml:previous?.baseHtml??applied?.html??base.html,conflict:false};
+    if(edited.file?.noteId===a.noteId&&typeof edited.file.bindingId==='string'&&/^[a-f0-9-]{36}$/i.test(edited.file.bindingId)&&typeof edited.file.hash==='string'&&/^[a-f0-9]{64}$/.test(edited.file.hash)){a.noteEditStage.file=edited.file;a.noteFileError='';}
     await applyNoteStage(a);
   }
   a.pending.phase=e.phase||a.pending.phase;
@@ -97,7 +99,7 @@ async function nativeUpdate(e) {
   for(const tabId of editorPorts.keys())if((await state(tabId)).assistantId===a.id)await send(tabId,{type:'AI_UPDATE',assistant:a});
 }
 function unappliedNoteStage(a){return !!a.noteEditStage&&a.noteEditStage.appliedRevision==null;}
-async function applyNoteStage(a,force=false){
+async function applyNoteStage(a,force=false,fileGuard={}){
   const stage=a.noteEditStage;
   // An explicit confirmed Apply is consent for this revision only. Automatic
   // syncing still requires the separate persistent note-editing permission.
@@ -112,9 +114,17 @@ async function applyNoteStage(a,force=false){
   if(owner==null)return {applied:false,reason:'hidden'};
   const stored=await local(`note:${a.noteId}`,null);if(!stored)return {applied:false,reason:'missing_note'};
   const n=C.note(stored,a.noteId);
+  let writeDisk=false;
+  if(stage.file){try{stage.file=(await native('noteVerify',{noteId:a.noteId,bindingId:stage.file.bindingId,expectedHash:stage.file.hash})).file||stage.file;}catch(error){stage.conflict=true;a.noteFileError=error.message;return {applied:false,conflict:true,reason:'disk_changed',error:error.message};}}
+  else if(typeof globalThis.NotesNative==='function'){
+    // Backups and releases before direct documents contain text-only stages.
+    // They need a fresh, guarded disk write rather than a UI-only projection.
+    const current=(await native('noteStatus',{noteId:n.id,text:n.text})).file;
+    if(current){writeDisk=true;if(!force){stage.requiresApply=true;stage.conflict=true;return {applied:false,conflict:true,reason:'explicit_apply'};}}
+  }
   if(!force&&(n.revision!==stage.baseRevision||n.text!==stage.baseText||n.html!==stage.baseHtml)){stage.conflict=true;return {applied:false,conflict:true,reason:'local_changes'};}
-  if(n.text===stage.text){Object.assign(stage,{baseRevision:n.revision,baseText:n.text,baseHtml:n.html,appliedRevision:n.revision,conflict:false});if(a.pending?.id===stage.requestId)a.pending.noteEditAppliedBase={revision:n.revision,text:n.text,html:n.html};return {applied:false,reason:'unchanged'};}
-  const response=await send(owner,{type:'NOTE_AI_PROPOSE',assistantId:a.id,noteId:a.noteId,editRequestId:stage.requestId,confirmed:force===true,text:stage.text,expectedRevision:n.revision,expectedText:n.text,expectedHtml:n.html});
+  if(n.text===stage.text&&!writeDisk){Object.assign(stage,{baseRevision:n.revision,baseText:n.text,baseHtml:n.html,appliedRevision:n.revision,conflict:false});if(a.pending?.id===stage.requestId)a.pending.noteEditAppliedBase={revision:n.revision,text:n.text,html:n.html};if(stage.file)await send(owner,{type:'NOTE_FILE_PRESENTED',noteId:n.id,file:stage.file});return {applied:false,reason:'unchanged'};}
+  const response=await send(owner,{type:'NOTE_AI_PROPOSE',assistantId:a.id,noteId:a.noteId,editRequestId:stage.requestId,confirmed:force===true,text:stage.text,expectedRevision:n.revision,expectedText:n.text,expectedHtml:n.html,...(stage.file?{file:stage.file}:{} )});
   if(!response?.accepted){
     if(response?.reason!=='hidden'&&response?.reason!=='context_changed')stage.conflict=true;
     // A timed-out proposal may still reach the renderer. Its ordered failure
@@ -125,11 +135,12 @@ async function applyNoteStage(a,force=false){
   try{
     const value=response.note;
     if(!value||value.id!==n.id||value.text!==stage.text||typeof value.html!=='string'||value.html.length>C.MAX_TEXT_BYTES)throw Error('The editor did not acknowledge the expected note revision.');
+    if(writeDisk)stage.file=(await native('noteSave',{noteId:n.id,text:stage.text,bindingId:fileGuard.bindingId,expectedHash:fileGuard.expectedHash})).file;
     const next=C.note({...n,text:value.text,html:value.html,revision:n.revision+1,updatedAt:Date.now()},n.id);
     await chrome.storage.local.set({[`note:${n.id}`]:next});
     Object.assign(stage,{baseRevision:next.revision,baseText:next.text,baseHtml:next.html,appliedRevision:next.revision,conflict:false});delete stage.requiresApply;
     if(a.pending?.id===stage.requestId)a.pending.noteEditAppliedBase={revision:next.revision,text:next.text,html:next.html};
-    const committed=await send(owner,{type:'NOTE_AI_COMMITTED',noteId:next.id,revision:next.revision,updatedAt:next.updatedAt,text:next.text,html:next.html,editRequestId:stage.requestId});
+    const committed=await send(owner,{type:'NOTE_AI_COMMITTED',noteId:next.id,revision:next.revision,updatedAt:next.updatedAt,text:next.text,html:next.html,editRequestId:stage.requestId,...(stage.file?{file:stage.file}:{} )});
     if(!committed?.ok)throw Error('The editor did not acknowledge the saved AI note change.');
     return {applied:true};
   }catch(error){
@@ -318,6 +329,26 @@ async function dispatch(m, sender, requestEpoch = privacyEpoch) {
       requireEditor(sender); if (requestEpoch !== privacyEpoch || !m.token || (await state(tabId)).restoreToken !== m.token) throw new Error('Restore cancelled.'); await verifyWithLimit(m.password); await revealOne(tabId, requestEpoch, m.token); return {};
     }
     case 'AI_READY': { requireEditor(sender); return {assistant:await assistantForTab(tabId)}; }
+    case 'NOTE_FILE_CONTEXT': {requireEditor(sender);const n=await noteForTab(tabId);return {note:n,assistant:await assistantForTab(tabId)};}
+    case 'NAME_NOTE_FILE': {
+      requireEditor(sender);const s=await state(tabId);if(s.noteId!==m.noteId)throw Error('The selected note changed.');const old=C.note(await local(`note:${s.noteId}`,null),s.noteId),n=C.note({...old,name:m.name,revision:old.revision+1,updatedAt:Date.now()},old.id);await chrome.storage.local.set({[`note:${n.id}`]:n});const a=await assistantForTab(tabId);
+      // Save As deliberately changes this note's binding. Keep any unseen AI
+      // result as a preview for the new file, without retaining the old grant.
+      if(unappliedNoteStage(a)&&typeof m.bindingId==='string'){delete a.noteEditStage.file;a.noteEditStage.requiresApply=true;a.noteEditStage.conflict=true;await saveAssistant(a);}
+      return {note:n,assistant:a};
+    }
+    case 'NOTE_FILE_PROJECT': {
+      requireEditor(sender);let a=await assistantForTab(tabId);if(m.noteId!==a.noteId)throw Error('The selected note changed.');
+      const selected=await native('noteProject',{noteId:a.noteId});
+      if(selected.path&&!a.projectExplicit&&(!a.project||projectKey(a.project)===projectKey(selected.defaultProject))){if(a.threadId)a=freshAssistant(a.noteId,selected.path,a.draft);else a.project=selected.path;await bindAssistant(tabId,a);}
+      return {note:await noteForTab(tabId),assistant:a};
+    }
+    case 'RELOAD_NOTE_FILE': {
+      requireEditor(sender);const s=await state(tabId);if(s.noteId!==m.noteId)throw Error('The selected note changed.');const a=await assistantForTab(tabId);if(a.pending)throw Error('Finish or stop the active turn before reloading the document.');
+      if(typeof m.text!=='string'||new TextEncoder().encode(m.text).length>C.MAX_TEXT_BYTES)throw Error('The document exceeds 2 MB.');
+      const old=C.note(await local(`note:${s.noteId}`,null),s.noteId),n=C.note({...old,text:m.text.replace(/\r\n?/g,'\n'),html:'',name:m.name||old.name,revision:old.revision+1,updatedAt:Date.now()},old.id);
+      await chrome.storage.local.set({[`note:${n.id}`]:n});a.noteEditStage=null;a.noteFileError='';if(m.relinked)a.editNote=false;await saveAssistant(a);return {note:n,assistant:a};
+    }
     case 'AI_DRAFT': {
       requireEditor(sender);
       if (typeof m.text !== 'string' || m.text.length > C.MAX_TEXT_BYTES) throw new Error('Draft too large.');
@@ -326,14 +357,14 @@ async function dispatch(m, sender, requestEpoch = privacyEpoch) {
     case 'AI_NOTE_EDIT_SET': {
       await activeEditor(sender,requestEpoch);if(typeof m.enabled!=='boolean')throw new Error('Choose whether Codex may edit this note.');
       const a=await contextAssistant(tabId,m);a.editNote=m.enabled;
-      // Turning editing off revokes this run's note permission permanently;
-      // enabling it again applies to the next submitted task.
+      // Turning editing off stops further app updates for this run. An already
+      // accepted Codex file grant lasts until the turn finishes or is stopped.
       if(!m.enabled&&a.pending){delete a.pending.noteEditBase;delete a.pending.noteEditAppliedBase;}
       await saveAssistant(a);return {assistant:a};
     }
     case 'AI_NOTE_SYNC': case 'AI_NOTE_APPLY': {
       await activeEditor(sender,requestEpoch);const a=await contextAssistant(tabId,m);
-      const result=await applyNoteStage(a,m.type==='AI_NOTE_APPLY'&&m.force===true);
+      const result=await applyNoteStage(a,m.type==='AI_NOTE_APPLY'&&m.force===true,{bindingId:m.bindingId,expectedHash:m.expectedHash});
       await saveAssistant(a);return {assistant:a,...result};
     }
     case 'AI_NOTE_DISCARD': {
@@ -346,11 +377,13 @@ async function dispatch(m, sender, requestEpoch = privacyEpoch) {
       if(typeof m.id!=='string'||!/^[a-f0-9-]{36}$/.test(m.id)||typeof m.text!=='string'||!m.text.trim()||m.text.length>500000)throw new Error('Invalid question.');
       const settings=await selection();await activeEditor(sender,requestEpoch);
       const a=await contextAssistant(tabId,m);if(a.pending)throw new Error('A response is already running.');
-      let noteEdit;
+      let noteEdit,noteFile;
       if(a.editNote===true){
         if(unappliedNoteStage(a))throw new Error('Apply or discard the pending AI note changes before starting another note-editing task.');
         const n=C.note(await local(`note:${a.noteId}`,null),a.noteId);
-        noteEdit={noteId:a.noteId,text:n.text,revision:n.revision};a.noteEditStage=null;
+        if(typeof globalThis.NotesNative==='function')noteFile=(await native('notePrepare',{noteId:n.id,text:n.text,bindingId:m.noteBindingId,expectedHash:m.noteFileHash})).file;
+        await activeEditor(sender,requestEpoch);
+        noteEdit={noteId:a.noteId,text:n.text,revision:n.revision,...(noteFile?{bindingId:noteFile.bindingId,fileHash:noteFile.hash}:{} )};a.noteEditStage=null;
       }
       const files=Array.isArray(m.files)?m.files.slice(0,20):[];
       a.pending={id:m.id,text:'',phase:'Starting',startedAt:Date.now()};
@@ -360,16 +393,17 @@ async function dispatch(m, sender, requestEpoch = privacyEpoch) {
       // Submission runs outside the storage queue. Notes continue saving while
       // Codex starts, thinks and streams; hiding never cancels an accepted turn.
       void native('send',{requestId:m.id,threadId:a.threadId,project:a.project,model:settings.model,effort:settings.effort,text:m.text,files,...noteEdit?{noteEdit}:{}}).then(r=>exclusive(async()=>{const latest=await local(`assistant:${a.id}`,null);if(latest){latest.threadId=r.threadId;latest.project=latest.project||settings.defaultProject;await saveAssistant(latest);}})).catch(error=>exclusive(()=>nativeUpdate({requestId:m.id,status:'failed',error:error.message})));
-      return {assistant:a};
+      return {assistant:a,...(noteFile?{file:noteFile}:{} )};
     }
     case 'AI_PROJECT': {
       await activeEditor(sender,requestEpoch);const current=await contextAssistant(tabId,m);if(current.pending)throw new Error('Finish or stop the active turn before changing projects.');
       const folder=await native('project',{path:m.path});await activeEditor(sender,requestEpoch);
+      current.projectExplicit=true;
       const saved=await rememberProject(folder.path,m.name);
-      if(projectKey(current.project)===projectKey(folder.path))return {assistant:current,...saved};
+      if(projectKey(current.project)===projectKey(folder.path)){await saveAssistant(current);return {assistant:current,...saved};}
       const all=await chrome.storage.local.get(null);
       const previous=Object.entries(all).filter(([k,a])=>k.startsWith('assistant:')&&a.agentVersion===4&&a.noteId===current.noteId&&projectKey(a.project)===projectKey(folder.path)).map(([,a])=>a).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))[0];
-      const a=previous||freshAssistant(current.noteId,folder.path,current.draft||'');await bindAssistant(tabId,a);return {assistant:a,...saved};
+      const a=previous||freshAssistant(current.noteId,folder.path,current.draft||'');a.projectExplicit=true;await bindAssistant(tabId,a);return {assistant:a,...saved};
     }
     case 'AI_PROJECTS': {await activeEditor(sender,requestEpoch);const a=await assistantForTab(tabId);return {projects:(await projects()).sort((a,b)=>b.updatedAt-a.updatedAt),currentProject:a.project||''};}
     case 'AI_HISTORY': {
@@ -426,7 +460,11 @@ async function dispatch(m, sender, requestEpoch = privacyEpoch) {
       const n = C.note({...m.note, revision: (previous?.revision || 0) + 1, updatedAt: Date.now()}, s.noteId);
       await chrome.storage.local.set({[`note:${n.id}`]: n, lastNoteId: n.id});
       await send(tabId, {type: 'NOTE_NAME', name: n.name});
-      return {note: n};
+      if(typeof globalThis.NotesNative==='function'){
+        try{const saved=await native('noteSave',{noteId:n.id,text:n.text,bindingId:m.bindingId,expectedHash:m.expectedHash});return {note:n,...(saved.file?{file:saved.file}:{} )};}
+        catch(error){return {note:n,fileError:error.message};}
+      }
+      return {note:n};
     }
     case 'NEW_NOTE': {
       requireEditor(sender);
@@ -437,6 +475,7 @@ async function dispatch(m, sender, requestEpoch = privacyEpoch) {
       await chrome.storage.local.set({[`note:${id}`]: n, lastNoteId: id});
       await patch(tabId, {noteId: id});
       const a=freshAssistant(id,previous.project);await bindAssistant(tabId,a);
+      a.projectExplicit=previous.projectExplicit===true;await saveAssistant(a);
       await send(tabId, {type: 'NOTE_NAME', name: n.name});
       return {note: n,assistant:a};
     }

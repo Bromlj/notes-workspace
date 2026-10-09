@@ -1,4 +1,4 @@
-NOTES WORKSPACE DESKTOP 5.1.1 — WINDOWS x64
+NOTES WORKSPACE DESKTOP 5.2.0 — WINDOWS x64
 
 Extract the entire ZIP first. Double-click Install.cmd to copy the program to
 your Windows account and create a Notes Workspace desktop shortcut.
@@ -22,26 +22,40 @@ On the Account page, check Windows project tools. If setup is needed, choose
 Set up Windows sandbox and complete the official Windows administrator prompt.
 This enables Codex's normal protected command environment for project work.
 
-Options > Browse folder lets you choose a project for reading/editing files,
-commands and tests. Access requests appear in the panel and wait for your
+Choose a project folder in the Reference panel for reading, editing, creating
+and moving real files, implementing changes, commands and tests. Access requests appear in the panel and wait for your
 decision. A new + note has its own chat and inherits the selected project.
 Attach files or drag them into the Reference panel. Your ordinary note is only
 included when you explicitly enable Edit this note.
 
-EDIT THIS NOTE (OPTIONAL)
+REAL DOCUMENTS AND EDIT THIS NOTE (OPTIONAL)
+File > Open links a UTF-8 text file on your drive. Save updates that file;
+Save As chooses a new file. Local recovery remains separate. Untitled notes
+use persistent document files in the local application data folder. The Reference
+panel shows the file path. Codex uses its normal tools on that actual file.
+The selected project and the document's folder are writable for an opted-in
+task. Other project tasks retain their normal project access and approvals.
+
 The checkbox above the question box starts off. Turn it on before sending a
 request such as "Revise my note to make it clearer." Codex can revise the
 existing note using its real file tools. Visible changes appear as it works.
 Alt+Q freezes AI changes to the ordinary note immediately; work continues on a
-private working copy. Alt+W catches up to the latest revision. You can still
+persistent real file on disk. Another program viewing that file can see those
+disk changes even while this Notepad screen stays frozen. Alt+W catches up to
+the latest revision. You can still
 type ordinary notes while hidden. If your text changed, review the pending
 revision and explicitly Apply or Discard it; your manual text is kept.
 Apply pending works even when Edit this note is off: confirm to apply that
 one revision without enabling further automatic edits.
-Undo AI edit restores the whole pre-task note, including its formatting, and
-turns note editing off so later updates cannot overwrite that undo. Ordinary
-Ctrl+Z also remains available. Each new + note starts with editing disabled.
+Undo AI edit is available after the task finishes. It restores the real file
+and the whole pre-task note, including its local formatting, only if the file
+has not changed again. Saves and Undo refuse to overwrite newer disk changes;
+local recovery retains your text. Ordinary Ctrl+Z remains available. Each new
++ note starts with editing disabled.
 Turning the checkbox off pauses note changes without stopping the Codex task.
+It cannot revoke file access already granted to an active turn. Stop the task
+explicitly if you need its disk edits to stop. Missing or moved files need to
+be reopened/relinked; the app does not silently recreate an old filename.
 
 SETTINGS AND BACKUPS
 Alt+Shift+S opens settings. Optional restore passphrase, hide-on-blur, local
@@ -66,5 +80,6 @@ The runtime is Electron and runs independently of Edge. This release has no code
 certificate; Windows may ask whether you trust the download. Do not disable
 Windows protections if your computer blocks it.
 
-See TEST_REPORT.md for measured verification and limits, plus licenses/ for
-Electron, Chromium, Codex and extraction-library notices.
+See TEST_REPORT.md for measured verification and limits. Runtime notices are
+included in licenses/, the root LICENSE and LICENSES.chromium.html, and the
+extraction libraries' own license files under resources/native/node_modules.
