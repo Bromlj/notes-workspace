@@ -1,0 +1,14 @@
+License provenance (retrieved 2026-10-09)
+
+OpenAI Codex CLI 0.160.0
+https://raw.githubusercontent.com/openai/codex/rust-v0.160.0/LICENSE
+https://raw.githubusercontent.com/openai/codex/rust-v0.160.0/NOTICE
+
+Ratatui 0.30.2, referenced by the pinned Codex Cargo.lock and root NOTICE
+https://raw.githubusercontent.com/openai/codex/rust-v0.160.0/codex-rs/Cargo.lock
+https://raw.githubusercontent.com/ratatui/ratatui/ratatui-v0.30.2/LICENSE
+
+The complete Codex Windows runtime also contains component-specific notices
+and licenses under its vendor/codex-resources tree. Preserve those files
+unchanged with the binary distribution. These root files supplement them;
+they do not replace the runtime's component licenses.

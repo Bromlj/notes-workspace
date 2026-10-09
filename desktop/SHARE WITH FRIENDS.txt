@@ -1,0 +1,55 @@
+NOTES WORKSPACE 5.1.1 — WINDOWS DESKTOP APP
+
+Share the release ZIP, not your installed app-data folder.
+
+1. Extract the entire ZIP to a folder you can keep.
+2. Double-click Notes Workspace.exe in that folder. Keep the resources and
+   other files beside it; the EXE is part of a portable application folder.
+3. Use the included desktop-shortcut action if you want an icon on the desktop.
+4. Write ordinary notes immediately. Press Alt+W to open the Reference panel.
+5. For AI, open the Account page from Settings/Options and sign in with your
+   own ChatGPT account. The official sign-in opens in your normal browser.
+   Return to the notepad and use Options > Reconnect, then choose a model
+   and thinking level. A ChatGPT website session alone does not authenticate
+   Codex. No API key, separate Node installation or Edge extension is needed.
+6. If the Account page says Windows sandbox setup is needed, choose Set up
+   Windows sandbox and complete the official Windows administrator prompt.
+   Return and check that the sandbox is ready before asking it to run project
+   commands. The normal sandbox restrictions and approval prompts remain on.
+
+The open-source Codex CLI runtime is included. Each person uses their own
+Codex allowance, available models and account configuration. Notes Workspace
+reuses that Windows user's standard Codex sign-in/configuration. Notes and
+chats are saved locally outside the app's portable program folder.
+
+Alt+Q hides and disables the visible AI panel; repeating it stays hidden.
+Alt+W restores it. Accepted requests continue while hidden. Tool approvals wait
+for you to reopen the panel. Each + note tab has its own chat. Choose an
+existing project folder in Options to let Codex read and edit that project.
+Extra access requests require your decision inside the panel.
+
+Edit this note is an optional checkbox above the question box. Enable it before
+asking Codex to revise the current note. Alt+Q freezes visible note changes
+while work continues privately; Alt+W catches up. If you typed while hidden,
+Apply pending asks before replacing your text. Undo AI edit restores the whole
+pre-task note and turns editing off. Each new note defaults to editing off.
+Apply pending can apply one confirmed revision while automatic editing is off.
+
+Export important notes using File > Save as. The privacy shortcut hides the
+panel visually; it does not conceal running software, files or activity from
+system inspection. Windows/file-picker dialogs can take keyboard priority.
+Closing the program, sleep, a crash or loss of connection can interrupt work.
+
+The release package excludes the creator's notes, conversations, browser
+profiles, account credentials, loopback connection tokens and machine paths.
+Do not add your app-data folder or .codex folder when sharing it.
+
+Independent software. Not affiliated with Microsoft or OpenAI. Third-party
+runtime licenses and notices are included with the app. Test results describe
+the checks performed; they are not a guarantee that every Windows setup,
+account, integration or future service change will behave identically.
+
+Official account/protocol documentation:
+https://learn.chatgpt.com/docs/app-server
+Official Codex source and license:
+https://github.com/openai/codex/tree/rust-v0.160.0

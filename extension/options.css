@@ -1,0 +1,29 @@
+:root { color-scheme: light; font: 15px/1.6 'Segoe UI', system-ui, sans-serif; color: #222; background: #f6f6f4; }
+* { box-sizing: border-box; } [hidden] { display: none !important; }
+body { margin: 0; padding: 36px 22px; }
+main { max-width: 860px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 18px; }
+h1 { font-size: 30px; letter-spacing: -.7px; line-height: 1.2; margin: 4px 0; font-weight: 650; }
+h2 { font-size: 19px; line-height: 1.3; margin: 0 0 12px; }
+p { margin: 9px 0; } .eyebrow { font-size: 11px; letter-spacing: 1.5px; font-weight: 700; color: #757575; }
+.intro { font-size: 16px; margin: 24px 0; color: #555; }
+section { padding: 25px 27px; background: white; border: 1px solid #deded9; border-radius: 7px; margin: 18px 0; }
+.start { background: #edf1ee; border-color: #ccd5ce; }
+button { font: inherit; font-size: 14px; border: 1px solid #bcbfbc; background: #f7f8f7; color: #222; border-radius: 4px; padding: 9px 15px; cursor: pointer; }
+button:hover { background: #e8ece9; } button:disabled { opacity: .6; cursor: wait; }
+.primary { background: #26392d; color: white; border-color: #26392d; margin-top: 12px; }
+.primary:hover { background: #3b5243; }
+kbd { font: 12px Consolas, monospace; padding: 2px 5px; border: 1px solid #c7c7c7; border-radius: 3px; background: #fafafa; }
+.muted, small { color: #676767; font-size: 13px; }
+.check { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0; }
+.check input { margin-top: 6px; width: 17px; height: 17px; }
+.check small { display: block; margin-top: 3px; }
+#shortcuts { margin: 16px 0; }
+.shortcut { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 8px 0; }
+.warning { border: 1px solid #d3bc8b; background: #fff8e9; padding: 10px; }
+#passphrase-form label { display: block; margin: 12px 0; max-width: 430px; font-size: 13px; }
+input[type="password"] { display: block; width: 100%; font: inherit; padding: 9px; margin-top: 4px; border: 1px solid #b9b9b9; border-radius: 3px; }
+.buttons { display: flex; gap: 10px; margin-top: 15px; }
+#preference-status { margin-left: 12px; font-size: 13px; }
+footer { color: #777; text-align: center; font-size: 12px; padding: 20px 0; }
+li { padding: 4px 0; }

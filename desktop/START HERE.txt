@@ -1,0 +1,70 @@
+NOTES WORKSPACE DESKTOP 5.1.1 — WINDOWS x64
+
+Extract the entire ZIP first. Double-click Install.cmd to copy the program to
+your Windows account and create a Notes Workspace desktop shortcut.
+Or run Notes Workspace.exe directly from the extracted folder.
+Keep its DLLs, resources and other files beside it. No Edge extension, Node,
+Python, API key or development environment is required.
+
+Write ordinary notes immediately. Alt+W opens the Reference panel in the same
+Notepad-style window. Alt+Q hides it and disables new submissions; repeat presses
+never reveal it. Accepted Codex work continues while hidden. Closing the entire
+program ends its Codex process and can interrupt a task. Windows file dialogs
+take keyboard focus; these shortcuts apply while the program has focus.
+
+AI SETUP
+In the Reference panel choose Options > Account > Sign in with ChatGPT. The
+official sign-in opens in your browser only for authentication. Each person
+uses their own eligible account and Codex allowance. Existing Codex sign-in on
+this Windows account is reused. No sign-in credentials are in this package.
+After sign-in choose Reconnect to load account-provided models and thinking.
+On the Account page, check Windows project tools. If setup is needed, choose
+Set up Windows sandbox and complete the official Windows administrator prompt.
+This enables Codex's normal protected command environment for project work.
+
+Options > Browse folder lets you choose a project for reading/editing files,
+commands and tests. Access requests appear in the panel and wait for your
+decision. A new + note has its own chat and inherits the selected project.
+Attach files or drag them into the Reference panel. Your ordinary note is only
+included when you explicitly enable Edit this note.
+
+EDIT THIS NOTE (OPTIONAL)
+The checkbox above the question box starts off. Turn it on before sending a
+request such as "Revise my note to make it clearer." Codex can revise the
+existing note using its real file tools. Visible changes appear as it works.
+Alt+Q freezes AI changes to the ordinary note immediately; work continues on a
+private working copy. Alt+W catches up to the latest revision. You can still
+type ordinary notes while hidden. If your text changed, review the pending
+revision and explicitly Apply or Discard it; your manual text is kept.
+Apply pending works even when Edit this note is off: confirm to apply that
+one revision without enabling further automatic edits.
+Undo AI edit restores the whole pre-task note, including its formatting, and
+turns note editing off so later updates cannot overwrite that undo. Ordinary
+Ctrl+Z also remains available. Each new + note starts with editing disabled.
+Turning the checkbox off pauses note changes without stopping the Codex task.
+
+SETTINGS AND BACKUPS
+Alt+Shift+S opens settings. Optional restore passphrase, hide-on-blur, local
+backup export/import and desktop shortcut creation are there.
+Notes and transcripts are saved under:
+%LOCALAPPDATA%\NotesWorkspace\DesktopData
+Codex keeps authentication and its own history in its normal account storage.
+Backups contain private notes and conversations: share the original release ZIP,
+never your data folder or backups. Original browser-extension notes are kept;
+export them using its settings backup control, then import in desktop settings.
+
+This is an independent app with a Notepad-style interface. It is not Microsoft
+Notepad or the official Codex desktop interface. It uses the official Codex
+agent and bundled CLI, with account-provided models and reasoning levels.
+Some proprietary desktop integrations and media features are not exposed.
+The cover provides visual privacy; system inspection, screen recording,
+file dialogs and account sign-in pages can reveal app use.
+
+The window, taskbar and desktop shortcut use the notepad icon. The EXE file
+retains the official Electron runtime's embedded icon and version metadata.
+The runtime is Electron and runs independently of Edge. This release has no code-signing
+certificate; Windows may ask whether you trust the download. Do not disable
+Windows protections if your computer blocks it.
+
+See TEST_REPORT.md for measured verification and limits, plus licenses/ for
+Electron, Chromium, Codex and extraction-library notices.

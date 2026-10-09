@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Notes Workspace — Account</title><link rel="icon" href="icons/notes32.png"><link rel="stylesheet" href="onboarding.css"></head>
+<body><main>
+  <header><img src="icons/notes128.png" width="40" height="40" alt=""><div><h1>Account</h1><p>Notes Workspace · 5.0.0</p></div></header>
+  <section aria-labelledby="account-heading">
+    <h2 id="account-heading">Use your own ChatGPT account</h2>
+    <p>The Codex runtime is included. Sign in once to use the Reference panel; ordinary notes work without signing in.</p>
+    <p id="account-status" role="status" aria-live="polite">Checking connection…</p>
+    <div class="buttons"><button id="account-login" type="button">Sign in with ChatGPT</button><button id="account-cancel" type="button" hidden>Cancel sign-in</button><button id="account-logout" type="button" hidden>Sign out</button><button id="account-refresh" type="button">Check again</button></div>
+    <p class="small">Sign-in opens the official OpenAI page in your normal browser. Complete your usual sign-in there, then return here. A browser ChatGPT session by itself does not sign in the Codex runtime.</p>
+  </section>
+  <section aria-labelledby="sandbox-heading"><h2 id="sandbox-heading">Windows project tools</h2><p>Set up Codex’s Windows sandbox once to let it run project commands and tests with the normal workspace restrictions.</p><p id="sandbox-status" role="status" aria-live="polite">Checking Windows sandbox…</p><div class="buttons"><button id="sandbox-setup" type="button" hidden>Set up Windows sandbox</button><button id="sandbox-refresh" type="button">Check sandbox</button></div><p class="small">The official setup may show a Windows administrator prompt. Complete it, then return here. This keeps the elevated sandbox and asks you before additional access.</p></section>
+  <section aria-labelledby="after-heading"><h2 id="after-heading">In the notepad</h2><p><kbd>Alt+W</kbd> opens the Reference panel. Choose <strong>Options → Reconnect</strong> after signing in, then select an available model and thinking level.</p><p><kbd>Alt+Q</kbd> hides the panel immediately. Accepted work continues; approvals wait until you reopen the panel. The main note is never added to a prompt automatically.</p></section>
+  <p class="small">This uses your account’s Codex allowance and available models. It reuses this Windows user’s normal local Codex sign-in and configuration. Each friend signs in to their own account; the shared app package contains no account, notes or chats.</p>
+  <p class="small">Independent software, not affiliated with Microsoft or OpenAI.</p>
+</main><script src="onboarding.js"></script></body></html>

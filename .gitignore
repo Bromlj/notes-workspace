@@ -1,0 +1,39 @@
+# Downloaded dependencies and generated application/release files
+**/node_modules/
+/desktop/dist/
+/release/
+*.zip
+*.zip.sha256.txt
+
+# Local test evidence and disposable profiles/projects (scripts stay tracked)
+/tests/*/
+/tests/*-results.*
+/tests/*-last.json
+/tests/*.log
+/tests/*.tap
+/tests/*-results.txt
+/tests/*-results.jsonl
+/docs/*.png
+/docs/*.jpg
+/docs/*.webp
+
+# Credentials, connection configuration and saved user data
+.env
+.env.*
+.codex/
+auth.json
+connection.json
+notes.json
+DesktopData/
+codex-home/
+startup-error.log
+Cookies
+Local State
+*.lnk
+
+# Editor and OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+__pycache__/
+*.pyc
